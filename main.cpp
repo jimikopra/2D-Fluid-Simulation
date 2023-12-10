@@ -1,123 +1,191 @@
 #include <SFML/Graphics.hpp>
 #include <vector>
-using namespace std;
+#include <cmath>
 
-const int windowWidth = 800;
-const int windowHeight = 800;
+// Fluid cell properties
+struct Cell {
+  float density;
+  float vx;
+  float vy;
+  sf::Vector2f getFlow() const {
+    return sf::Vector2f(vx, vy);
+  }
+};
 
-const int gridWidth = 100;
-const int gridHeight = 100;
-const float cellSizeX = static_cast<float>(windowWidth) / gridWidth;
-const float cellSizeY = static_cast<float>(windowHeight) / gridHeight;
+// Simulation parameters
+const int width = 200;
+const int height = 200;
+const float diffusionRate = 0.0001f;
+const float viscosity = 3.0f;
+const float gravity = -1.0f;
+const int sourceStrength = 10;
 
-vector<vector<sf::Color>> fluidGrid(gridWidth, vector<sf::Color>(gridHeight, sf::Color::Black));
+std::vector<Cell> cells(width * height);
 
-float ComputeNewVelocityX(int x, int y, float currentVx, float currentVy, float dt) {
-    // Calculate the new velocity component in the x direction based on advection
-    // For simplicity, use a simple Euler method here
-    float advectionVx = currentVx - (dt * currentVx);
-    
-    // You can add more complex calculations here for viscosity, pressure, and other effects
-    // For a basic simulation, this is sufficient
+// Source position
+sf::Vector2i sourcePos = sf::Vector2i(width / 2, height / 2);
 
-    return advectionVx;
+// Color gradient function
+sf::Color getDensityColor(float density) {
+  float normalizedDensity = density / 255.0f;
+  if (normalizedDensity < 0.25f) {
+    return sf::Color::Blue;
+  } else if (normalizedDensity < 0.5f) {
+    return sf::Color::Cyan;
+  } else if (normalizedDensity < 0.75f) {
+    return sf::Color::Green;
+  } else {
+    return sf::Color::Yellow;
+  }
 }
 
-float ComputeNewVelocityY(int x, int y, float currentVx, float currentVy, float dt) {
-    // Calculate the new velocity component in the y direction based on advection
-    // For simplicity, use a simple Euler method here
-    float advectionVy = currentVy - (dt * currentVy);
+void updateVelocity(int x, int y, float dt) {
+  // Apply gravity
+  // cells[y * width + x].vy += dt * gravity;
+  
+  // Calculate pressure
+  float pressure = 0.0f;
+  for (int i = -1; i <= 1; ++i) {
+    for (int j = -1; j <= 1; ++j) {
+      int nx = x + i;
+      int ny = y + j;
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        pressure += cells[ny * width + nx].density;
+      }
+    }
+  }
+  pressure /= 9.0f;
 
-    // You can add more complex calculations here for viscosity, pressure, and other effects
-    // For a basic simulation, this is sufficient
+  // Update velocity
+  cells[y * width + x].vx -= dt * (pressure - cells[y * width + x].density) / 2.0f;
+  cells[y * width + x].vy -= dt * gravity;
 
-    return advectionVy;
+  // Bounce velocity off boundaries
+  if (x == 0) {
+    cells[y * width + x].vx *= -1.0f;
+  } else if (x == width - 1) {
+    cells[y * width + x].vx *= -1.0f;
+  }
+
+  if (y == 0) {
+    cells[y * width + x].vy *= -1.0f;
+  } else if (y == height - 1) {
+    cells[y * width + x].vy *= -1.0f;
+  }
+
+  // Add diffusion
+  for (int i = -1; i <= 1; ++i) {
+    for (int j = -1; j <= 1; ++j) {
+      int nx = x + i;
+      int ny = y + j;
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        cells[y * width + x].vx += dt * diffusionRate * (cells[ny * width + nx].vx - cells[y * width + x].vx);
+        cells[y * width + x].vy += dt * diffusionRate * (cells[ny * width + nx].vy - cells[y * width + x].vy);
+      }
+    }
+  }
+
+  // Add viscosity
+  cells[y * width + x].vx -= dt * viscosity * cells[y * width + x].vx;
+  cells[y * width + x].vy -= dt * viscosity * cells[y * width + x].vy;
 }
 
-sf::Color ComputeNewDensity(int x, int y, sf::Color currentColor, float dt) {
-    // Calculate the new density based on advection
-    // For simplicity, use a simple Euler method here
-    sf::Color advectionColor = sf::Color(
-        static_cast<sf::Uint8>(currentColor.r - (dt * currentColor.r)),
-        static_cast<sf::Uint8>(currentColor.g - (dt * currentColor.g)),
-        static_cast<sf::Uint8>(currentColor.b - (dt * currentColor.b))
-    );
+void updateDensity(int x, int y, float dt) {
+  // Advection
+  float dx = 0.5f * cells[y * width + x].vx * dt;
+  float dy = 0.5f * cells[y * width + x].vy * dt;
 
-    // You can add more complex calculations here for diffusion, sources, and other effects
-    // For a basic simulation, this is sufficient
+  float newDensity = cells[y * width + x].density;
+  if (x - dx >= 0 && x - dx < width && y - dy >= 0 && y - dy < height) {
+    newDensity += cells[(y - dy) * width + x - dx].density;
+  }
+  if (x + dx >= 0 && x + dx < width && y + dy >= 0 && y + dy < height) {
+    newDensity -= cells[(y + dy) * width + x + dx].density;
+  }
 
-    return advectionColor;
+  // Source
+  if (std::abs(x - sourcePos.x) <= 2 && std::abs(y - sourcePos.y) <= 2) {
+    newDensity += dt * sourceStrength;
+  }
+
+  cells[y * width + x].density = newDensity;
 }
 
+void updateSimulation(float dt) {
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      updateVelocity(x, y, dt);
+    }
+  }
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      updateDensity(x, y, dt);
+    }
+  }
+}
 
+void render(sf::RenderWindow& window) {
+  window.clear(sf::Color::Black);
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      sf::Color color = getDensityColor(cells[y * width + x].density);
+      sf::RectangleShape cell(sf::Vector2f(1.0f, 1.0f));
+      cell.setPosition(sf::Vector2f(x, y));
+      cell.setFillColor(color);
+      window.draw(cell);
+    }
+  }
+  // Draw source indicator
+  sf::CircleShape source(3.0f, 10);
+  source.setFillColor(sf::Color::Red);
+  source.setPosition(sf::Vector2f(sourcePos.x, sourcePos.y));
+  window.draw(source);
+  window.display();
+}
+
+void renderVelocityVectors(sf::RenderWindow& window) {
+  float scale = 10.0f;
+
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      sf::Vector2f velocity = cells[y * width + x].getFlow() * scale;
+
+      // Draw an arrow at the cell position, pointing in the direction of the velocity
+      sf::VertexArray arrow(sf::Lines, 2);
+      arrow[0].position = sf::Vector2f(x, y);
+      arrow[1].position = arrow[0].position + velocity;
+
+      arrow[0].color = sf::Color::Black; // Set color for the start point
+      arrow[1].color = sf::Color::Red; // Set color for the end point
+
+      window.draw(arrow);
+    }
+  }
+}
 
 int main() {
-    sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight), "Fluid Simulation");
+  sf::RenderWindow window(sf::VideoMode(width, height), "2D Fluid Simulation");
 
-    int centerX = gridWidth / 2;
-    int centerY = gridHeight / 2;
+  sf::Clock clock;
+  float dt = 0.001f;
 
-    sf::Color initialColor(0, 0, 255);  // High density as blue
-    float initialVelocityX = 2.0f;
-    float initialVelocityY = 0.0f;
+  while (window.isOpen()) {
+    sf::Event event;
+    while (window.pollEvent(event)) {
+      if (event.type == sf::Event::Closed) {
+        window.close();
+      }
 
-    for (int x = centerX - 10; x < centerX + 10; ++x) {
-        for (int y = centerY - 10; y < centerY + 10; ++y) {
-            fluidGrid[x][y] = initialColor;
-        }
+      // Handle mouse click events to update source position
+      if (event.type == sf::Event::MouseButtonPressed) {
+        sourcePos = sf::Vector2i(event.mouseButton.x, event.mouseButton.y);
+      }
     }
 
-    float dt = 0.1f;
-    sf::Vector2f gravity(0.0f, 0.1f);
+    dt = clock.restart().asSeconds();
+    updateSimulation(dt);
+    render(window);
+  }
 
-    while (window.isOpen()) {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
-                window.close();
-        }
-
-        vector<vector<sf::Color>> updatedGrid(gridWidth, vector<sf::Color>(gridHeight, sf::Color::Black));
-
-        // Velocity advection with gravitational force
-        for (int x = 1; x < gridWidth - 1; ++x) {
-            for (int y = 1; y < gridHeight - 1; ++y) {
-                sf::Color currentColor = fluidGrid[x][y];
-                float vy = gravity.y * dt;
-
-                // Calculate new colors based on advection equations
-                sf::Color newColor = ComputeNewDensity(x, y, currentColor, dt);
-                updatedGrid[x][y] = newColor;
-
-                // Apply gravitational force
-                if (y < gridHeight - 1)
-                    updatedGrid[x][y + 1] = currentColor;
-                else
-                    updatedGrid[x][y] = currentColor;
-            }
-        }
-
-        fluidGrid = updatedGrid;
-
-        window.clear();
-
-        for (int x = 0; x < gridWidth; ++x) {
-            for (int y = 0; y < gridHeight; ++y) {
-                float cellX = x * cellSizeX;
-                float cellY = y * cellSizeY;
-
-                sf::RectangleShape cellShape(sf::Vector2f(cellSizeX, cellSizeY));
-                cellShape.setPosition(cellX, cellY);
-
-                sf::Color cellColor = fluidGrid[x][y];
-                cellShape.setFillColor(cellColor);
-
-                window.draw(cellShape);
-            }
-        }
-
-        window.display();
-    }
-
-    return 0;
+  return 0;
 }

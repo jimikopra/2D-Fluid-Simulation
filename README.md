@@ -13,15 +13,17 @@ This is a simple 2D fluid simulation implemented in C++ using the Simple and Fas
 
 ## Features
 
-- 2D fluid simulation.
-- Grid-based representation of fluid.
-- Simulation of advection, diffusion, and gravitational force.
-- Visualization of the fluid using SFML.
+- Advection of density
+- Velocity diffusion
+- Viscosity effect
+- Gravity simulation
+- Interactive source for density
+- Visualization of the fluid using SFML
 
 ## Requirements
 
 - C++ compiler (C++11 or higher).
-- SFML library.
+- [SFML](https://www.sfml-dev.org/) - Simple and Fast Multimedia Library
 
 ## Getting Started
 
@@ -39,8 +41,9 @@ This is a simple 2D fluid simulation implemented in C++ using the Simple and Fas
 ## Usage
 - The program opens a window displaying the 2D fluid simulation.
 - The fluid is initially set with some properties (e.g., color, density) in the center of the grid.
+- Mouse Click: Move the density source to the clicked position.
 - You can customize and extend the simulation by modifying the code in main.cpp.
-- The simulation includes basic advection, diffusion, and gravitational force. You can add more complex calculations for additional effects.
+- You can add more complex calculations for additional effects.
 
 ## Customization
 
